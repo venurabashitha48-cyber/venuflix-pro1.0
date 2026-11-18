@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="si">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VenuFlix PRO</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#090b10;color:white;font-family:Arial}
+header{background:#141824;padding:17px;display:flex;justify-content:space-between;align-items:center;position:sticky;top:0;z-index:5}
+.logo{font-size:24px;font-weight:bold;color:#e50914}
+button{background:#e50914;color:white;border:0;padding:10px 13px;border-radius:7px;cursor:pointer}
+nav{display:flex;gap:8px;padding:12px;overflow:auto}
+nav button{background:#252b38;white-space:nowrap}
+.hero{padding:45px 20px;background:linear-gradient(90deg,#090b10,#38212b,#090b10)}
+.hero h1{font-size:34px}
+input,textarea{width:100%;padding:12px;margin:7px 0;background:#202532;color:white;border:1px solid #414858;border-radius:7px}
+.section{padding:15px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.movie{background:#171c27;border-radius:9px;overflow:hidden}
+.movie img{width:100%;height:155px;object-fit:cover}
+.info{padding:9px}
+.info h3{font-size:14px}
+.actions{display:flex;gap:5px;flex-wrap:wrap}
+.actions button{font-size:11px;padding:7px}
+.panel{background:#171c27;margin:12px;padding:15px;border-radius:10px}
+.hidden{display:none!important}
+#player{position:fixed;inset:0;background:#08090d;z-index:20;overflow:auto;padding:15px}
+#player video,#player iframe{width:100%;aspect-ratio:16/9;margin-top:50px}
+footer{text-align:center;padding:25px;color:#aaa}
+@media(min-width:700px){.grid{grid-template-columns:repeat(5,1fr)}.movie img{height:220px}}
+</style>
+</head>
+<body>
+
+<header>
+<div class="logo">VenuFlix <span style="color:white">PRO</span></div>
+<button onclick="adminLogin()">Admin</button>
+</header>
+
+<section class="hero">
+<p style="color:#e50914">PREMIUM MOVIE EXPERIENCE</p>
+<h1>Unlimited Movies.</h1>
+<p>Watch Your Favourite Movies</p>
+<button onclick="document.getElementById('library').scrollIntoView()">Explore Now</button>
+</section>
+
+<nav>
+<button onclick="filter('All')">All</button>
+<button onclick="filter('Action')">Action</button>
+<button onclick="filter('Adventure')">Adventure</button>
+<button onclick="filter('Drama')">Drama</button>
+<button onclick="filter('Comedy')">Comedy</button>
+<button onclick="watchlist()">My List</button>
+</nav>
+
+<section class="section" id="library">
+<h2>Discover Movies</h2>
+<input id="search" placeholder="Search Sinhala / English Movies..." oninput="searchMovies()">
+<div class="grid" id="movies">Loading...</div>
+</section>
+
+<section class="panel hidden" id="admin">
+<h2>Admin Dashboard</h2>
+<input id="mid" placeholder="Movie ID (edit only)">
+<input id="title" placeholder="Movie Title">
+<input id="sinhala" placeholder="Sinhala Title">
+<input id="poster" placeholder="Poster URL">
+<input id="video" placeholder="Authorized YouTube / MP4 URL">
+<input id="category" placeholder="Category">
+<textarea id="description" placeholder="Description"></textarea>
+<button onclick="saveMovie()">Save Movie</button>
+<button onclick="clearForm()">Clear</button>
+<button onclick="adminLogout()">Admin Logout</button>
+<p id="status"></p>
+</section>
+
+<div id="player" class="hidden">
+<button onclick="closePlayer()">✕ Close</button>
+<h2 id="playTitle"></h2>
+<div id="screen"></div>
+<div class="panel">
+<h3>Comments</h3>
+<div id="comments"></div>
+<textarea id="comment" placeholder="Write a comment..."></textarea>
+<button onclick="sendComment()">Post Comment</button>
+</div>
+</div>
+
+<footer>VenuFlix PRO | By Venura Bashitha</footer>
+
+<script>
+const defaultMovies = [
+  {
+    id: "1",
+    title: "Sample Action Movie",
+    sinhala: "ක්‍රියාදාම සිනමා පටය",
+    poster: "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=500",
+    video: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    category: "Action",
+    description: "This is a sample action movie description."
+  }
+];
+
+let movies = JSON.parse(localStorage.getItem("vf_movies")) || defaultMovies;
+let current = null;
+let admin = false;
+
+const $ = id => document.getElementById(id);
+
+function getData(key){
+  try{return JSON.parse(localStorage.getItem(key)||"[]")}catch{return []}
+}
+function saveData(key,data){
+  localStorage.setItem(key,JSON.stringify(data));
+}
+
+function load(){
+  render();
+}
+
+function render(list=movies){
+  $("movies").innerHTML="";
+  if(!list.length){$("movies").textContent="No Movies Found";return}
+  list.forEach(m=>{
+    const liked = getData("vf_likes");
+    const saved = getData("vf_saved");
+    const card = document.createElement("div");
+    card.className = "movie";
+    
+    const img = document.createElement("img");
+    img.src = m.poster || "";
+    img.alt = m.title || "Movie";
+    
+    const info = document.createElement("div");
+    info.className = "info";
+    
+    const h = document.createElement("h3");
+    h.textContent = m.title || "Movie";
+    
+    const cat = document.createElement("p");
+    cat.textContent = m.category || "";
+    
+    const actions = document.createElement("div");
+    actions.className = "actions";
+    
+    function btn(label,fn){
+      const b = document.createElement("button");
+      b.textContent = label;
+      b.onclick = fn;
+      actions.append(b);
+    }
+    
+    btn("▶ Watch", () => play(m));
+    btn((liked.includes(m.id) ? "♥" : "♡") + " Like", () => like(m.id));
+    btn(saved.includes(m.id) ? "✓ Saved" : "+ Save", () => save(m.id));
+    
+    if(admin){
+      btn("Edit", () => edit(m));
+      btn("Delete", () => remove(m.id));
+    }
+    
+    info.append(h, cat, actions);
+    card.append(img, info);
+    $("movies").append(card);
+  });
+}
+
+window.filter = c => render(c === "All" ? movies : movies.filter(m => m.category === c));
+
+window.searchMovies = () => {
+  const s = $("search").value.toLocaleLowerCase();
+  render(movies.filter(m => [m.title, m.sinhala, m.category, m.description].some(x => (x || "").toLocaleLowerCase().includes(s))));
+};
+
+window.like = id => {
+  let a = getData("vf_likes");
+  a = a.includes(id) ? a.filter(x => x !== id) : [...a, id];
+  saveData("vf_likes", a);
+  render();
+};
+
+window.save = id => {
+  let a = getData("vf_saved");
+  a = a.includes(id) ? a.filter(x => x !== id) : [...a, id];
+  saveData("vf_saved", a);
+  render();
+};
+
+window.watchlist = () => {
+  const ids = getData("vf_saved");
+  render(movies.filter(m => ids.includes(m.id)));
+  $("library").scrollIntoView();
+};
+
+window.adminLogin = () => {
+  const password = prompt("Admin Password:");
+  // Admin password එක "1234" ලෙස සකසා ඇත
+  if(password === "1234"){
+    admin = true;
+    $("admin").classList.remove("hidden");
+    render();
+  } else if(password) {
+    alert("Wrong password! (Default is 1234)");
+  }
+};
+
+window.adminLogout = () => {
+  admin = false;
+  $("admin").classList.add("hidden");
+  render();
+};
+
+window.saveMovie = () => {
+  if(!admin) return;
+  const mid = $("mid").value.trim();
+  const data = {
+    id: mid || Date.now().toString(),
+    title: $("title").value.trim(),
+    sinhala: $("sinhala").value.trim(),
+    poster: $("poster").value.trim(),
+    video: $("video").value.trim(),
+    category: $("category").value.trim(),
+    description: $("description").value.trim()
+  };
+  
+  if(!data.title || !data.video) return alert("Title and video required");
+  
+  if(mid){
+    const index = movies.findIndex(m => m.id === mid);
+    if(index !== -1) movies[index] = data;
+  } else {
+    movies.push(data);
+  }
+  
+  localStorage.setItem("vf_movies", JSON.stringify(movies));
+  $("status").textContent = "Movie saved successfully!";
+  clearForm();
+  render();
+};
+
+window.edit = m => {
+  $("mid").value = m.id;
+  $("title").value = m.title || "";
+  $("sinhala").value = m.sinhala || "";
+  $("poster").value = m.poster || "";
+  $("video").value = m.video || "";
+  $("category").value = m.category || "";
+  $("description").value = m.description || "";
+  $("admin").classList.remove("hidden");
+};
+
+window.remove = id => {
+  if(!admin || !confirm("Delete Movie?")) return;
+  movies = movies.filter(m => m.id !== id);
+  localStorage.setItem("vf_movies", JSON.stringify(movies));
+  render();
+};
+
+window.clearForm = () => {
+  ["mid", "title", "sinhala", "poster", "video", "category", "description"].forEach(id => $(id).value = "");
+};
+
+function safeVideo(url){
+  try{
+    const u = new URL(url);
+    if(u.protocol !== "https:") return null;
+    if(u.hostname === "youtu.be") return "https://www.youtube-nocookie.com/embed/" + u.pathname.slice(1);
+    if(["youtube.com", "www.youtube.com", "m.youtube.com"].includes(u.hostname)){
+      const id = u.searchParams.get("v");
+      if(id) return "https://www.youtube-nocookie.com/embed/" + id;
+    }
+    if(/\.(mp4|webm)$/i.test(u.pathname)) return url;
+  }catch{}
+  return null;
+}
+
+window.play = m => {
+  const url = safeVideo(m.video);
+  if(!url) return alert("Invalid video URL");
+  current = m.id;
+  $("playTitle").textContent = m.title;
+  $("screen").innerHTML = "";
+  if(url.includes("youtube-nocookie.com")){
+    const f = document.createElement("iframe");
+    f.src = url;
+    f.allowFullscreen = true;
+    $("screen").append(f);
+  } else {
+    const v = document.createElement("video");
+    v.src = url;
+    v.controls = true;
+    v.playsInline = true;
+    $("screen").append(v);
+  }
+  $("player").classList.remove("hidden");
+  loadComments();
+};
+
+function loadComments(){
+  const allComments = JSON.parse(localStorage.getItem("vf_comments")) || {};
+  const movieComments = allComments[current] || [];
+  $("comments").innerHTML = "";
+  if(movieComments.length === 0){
+    $("comments").innerHTML = "<p style='color:#777;font-size:13px;'>No comments yet. Be the first!</p>";
+    return;
+  }
+  movieComments.forEach(c => {
+    const p = document.createElement("p");
+    p.textContent = c.text;
+    p.style.borderBottom = "1px solid #202532";
+    p.style.paddingBottom = "5px";
+    $("comments").append(p);
+  });
+}
+
+window.sendComment = () => {
+  const text = $("comment").value.trim();
+  if(!text || !current) return;
+  if(text.length > 1000) return alert("Maximum 1000 characters");
+  
+  let allComments = JSON.parse(localStorage.getItem("vf_comments")) || {};
+  if(!allComments[current]) allComments[current] = [];
+  
+  allComments[current].unshift({text: text, createdAt: Date.now()});
+  localStorage.setItem("vf_comments", JSON.stringify(allComments));
+  
+  $("comment").value = "";
+  loadComments();
+};
+
+window.closePlayer = () => {
+  $("screen").innerHTML = "";
+  $("player").classList.add("hidden");
+};
+
+load();
+</script>
+
+</body>
+</html>
